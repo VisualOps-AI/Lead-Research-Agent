@@ -8,13 +8,18 @@ const searchBtn = document.getElementById('searchBtn');
 const btnText = document.querySelector('.btn-text');
 const btnLoader = document.querySelector('.btn-loader');
 const resultsSection = document.getElementById('results');
+const loadingSection = document.getElementById('loading');
+const loadingTitle = document.getElementById('loadingTitle');
+const loadingStep = document.getElementById('loadingStep');
 const errorSection = document.getElementById('error');
 const errorMessage = document.getElementById('errorMessage');
 const copyBtn = document.getElementById('copyBtn');
 const exampleBtns = document.querySelectorAll('.example-btn');
+const loadingSteps = document.querySelectorAll('.step');
 
 // State
 let currentData = null;
+let loadingInterval = null;
 
 // Event Listeners
 searchForm.addEventListener('submit', handleSearch);
@@ -33,7 +38,7 @@ async function handleSearch(e) {
     const company = companyInput.value.trim();
     if (!company) return;
 
-    setLoading(true);
+    setLoading(true, company);
     hideError();
     hideResults();
 
@@ -57,10 +62,12 @@ async function handleSearch(e) {
         }
 
         currentData = data;
-        displayResults(data);
+        completeLoading();
+        setTimeout(() => {
+            displayResults(data);
+        }, 500);
     } catch (error) {
         showError(error.message || 'Failed to research company. Make sure the API server is running.');
-    } finally {
         setLoading(false);
     }
 }
@@ -206,14 +213,97 @@ async function copyToClipboard() {
 }
 
 // UI Helpers
-function setLoading(loading) {
+function setLoading(loading, companyName = '') {
     searchBtn.disabled = loading;
     if (loading) {
         btnText.classList.add('hidden');
         btnLoader.classList.remove('hidden');
+
+        // Show loading section
+        loadingSection.classList.remove('hidden');
+        loadingTitle.textContent = `Researching ${companyName}...`;
+        loadingStep.textContent = 'Initializing AI agent';
+
+        // Reset steps
+        loadingSteps.forEach(step => {
+            step.classList.remove('active', 'completed');
+        });
+
+        // Start step animation
+        startLoadingAnimation();
     } else {
         btnText.classList.remove('hidden');
         btnLoader.classList.add('hidden');
+        loadingSection.classList.add('hidden');
+        stopLoadingAnimation();
+    }
+}
+
+function startLoadingAnimation() {
+    const steps = [
+        { step: 1, text: 'Searching the web for information...' },
+        { step: 2, text: 'Analyzing search results...' },
+        { step: 3, text: 'Extracting company details...' },
+        { step: 4, text: 'Identifying leadership team...' },
+        { step: 5, text: 'Generating comprehensive report...' }
+    ];
+
+    let currentStep = 0;
+
+    // Activate first step immediately
+    activateStep(steps[0]);
+
+    loadingInterval = setInterval(() => {
+        // Mark current as completed
+        const currentStepEl = document.querySelector(`.step[data-step="${steps[currentStep].step}"]`);
+        if (currentStepEl) {
+            currentStepEl.classList.remove('active');
+            currentStepEl.classList.add('completed');
+        }
+
+        currentStep++;
+
+        if (currentStep < steps.length) {
+            activateStep(steps[currentStep]);
+        } else {
+            // Loop back or stay on last step
+            currentStep = steps.length - 1;
+        }
+    }, 4000); // Change step every 4 seconds
+}
+
+function activateStep(stepInfo) {
+    const stepEl = document.querySelector(`.step[data-step="${stepInfo.step}"]`);
+    if (stepEl) {
+        stepEl.classList.add('active');
+        loadingStep.textContent = stepInfo.text;
+    }
+}
+
+function completeLoading() {
+    // Mark all steps as completed
+    loadingSteps.forEach(step => {
+        step.classList.remove('active');
+        step.classList.add('completed');
+    });
+    loadingStep.textContent = 'Research complete!';
+    loadingTitle.textContent = 'Done!';
+
+    stopLoadingAnimation();
+
+    // Hide loading after brief delay
+    setTimeout(() => {
+        loadingSection.classList.add('hidden');
+        btnText.classList.remove('hidden');
+        btnLoader.classList.add('hidden');
+        searchBtn.disabled = false;
+    }, 500);
+}
+
+function stopLoadingAnimation() {
+    if (loadingInterval) {
+        clearInterval(loadingInterval);
+        loadingInterval = null;
     }
 }
 
