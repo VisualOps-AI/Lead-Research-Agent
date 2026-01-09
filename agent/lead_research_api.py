@@ -65,21 +65,32 @@ Return ONLY valid JSON matching this schema:
 
 Your response must be ONLY the JSON object, nothing else."""
 
-    # Use Claude with web search tool
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        system=system_prompt,
-        tools=[{
-            "type": "web_search_20250305",
-            "name": "web_search",
-            "max_uses": 10
-        }],
-        messages=[{
-            "role": "user",
-            "content": f"Research this lead thoroughly and return structured JSON: {name}"
-        }]
-    )
+    try:
+        # Use Claude with web search tool
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            system=system_prompt,
+            tools=[{
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 10
+            }],
+            messages=[{
+                "role": "user",
+                "content": f"Research this lead thoroughly and return structured JSON: {name}"
+            }]
+        )
+    except anthropic.RateLimitError:
+        return {
+            "error": "Rate limit exceeded. Please wait a minute and try again.",
+            "error_type": "rate_limit"
+        }
+    except anthropic.APIError as e:
+        return {
+            "error": f"API error: {str(e)}",
+            "error_type": "api_error"
+        }
 
     # Extract text from response
     result_text = ""
