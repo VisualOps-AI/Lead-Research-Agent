@@ -22,10 +22,10 @@
       "position": [460, 300],
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:5000/research",
+        "url": "https://delfina-unwrestled-emotionally.ngrok-free.dev/research",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: $json.body.lead_name }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: $json.body.name }) }}",
         "options": {
           "timeout": 120000
         }

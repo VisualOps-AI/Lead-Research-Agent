@@ -20,9 +20,13 @@ for env_path in [Path(__file__).parent / ".env", Path(__file__).parent.parent / 
 
 import anthropic
 import json
+import time
 from datetime import datetime
 
 client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
+
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 5  # seconds
 
 LEAD_SCHEMA = {
     "name": "string - Official company/person name",
@@ -65,31 +69,47 @@ Return ONLY valid JSON matching this schema:
 
 Your response must be ONLY the JSON object, nothing else."""
 
-    try:
-        # Use Claude with web search tool
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            system=system_prompt,
-            tools=[{
-                "type": "web_search_20250305",
-                "name": "web_search",
-                "max_uses": 10
-            }],
-            messages=[{
-                "role": "user",
-                "content": f"Research this lead thoroughly and return structured JSON: {name}"
-            }]
-        )
-    except anthropic.RateLimitError:
+    response = None
+    last_error = None
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4096,
+                system=system_prompt,
+                tools=[{
+                    "type": "web_search_20250305",
+                    "name": "web_search",
+                    "max_uses": 10
+                }],
+                messages=[{
+                    "role": "user",
+                    "content": f"Research this lead thoroughly and return structured JSON: {name}"
+                }]
+            )
+            break  # Success, exit retry loop
+        except anthropic.RateLimitError as e:
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                backoff = INITIAL_BACKOFF * (2 ** attempt)
+                print(f"Rate limited. Retrying in {backoff}s (attempt {attempt + 1}/{MAX_RETRIES})")
+                time.sleep(backoff)
+            else:
+                return {
+                    "error": f"Rate limit exceeded after {MAX_RETRIES} retries. Please try again later.",
+                    "error_type": "rate_limit"
+                }
+        except anthropic.APIError as e:
+            return {
+                "error": f"API error: {str(e)}",
+                "error_type": "api_error"
+            }
+
+    if response is None:
         return {
-            "error": "Rate limit exceeded. Please wait a minute and try again.",
-            "error_type": "rate_limit"
-        }
-    except anthropic.APIError as e:
-        return {
-            "error": f"API error: {str(e)}",
-            "error_type": "api_error"
+            "error": "Failed to get response after retries",
+            "error_type": "retry_exhausted"
         }
 
     # Extract text from response
@@ -133,16 +153,20 @@ def create_webhook_server():
     @app.after_request
     def after_request(response):
         response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, ngrok-skip-browser-warning')
         response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         return response
 
-    @app.route("/research", methods=["POST"])
+    @app.route("/research", methods=["POST", "OPTIONS"])
     def research_endpoint():
         """
         POST /research
         Body: {"name": "Company Name"} or {"names": ["Company 1", "Company 2"]}
         """
+        # Handle CORS preflight
+        if request.method == "OPTIONS":
+            return "", 200
+
         data = request.json
 
         if "name" in data:
